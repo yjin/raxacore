@@ -74,6 +74,15 @@
             <artifactId>guava</artifactId>
             <version>10.0.1</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.openmrs.module</groupId>
+            <artifactId>dss-api</artifactId>
+            <version>2.27.23-SNAPSHOT</version>
+            <type>jar</type>
+            <scope>provided</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -163,25 +172,25 @@
                                     </action>
                                 </pluginExecution>
                                 <pluginExecution>
-                                	<pluginExecutionFilter>
-                                		<groupId>
-                                			org.apache.maven.plugins
-                                		</groupId>
-                                		<artifactId>
-                                			maven-dependency-plugin
-                                		</artifactId>
-                                		<versionRange>
-                                			[2.4,)
-                                		</versionRange>
-                                		<goals>
-                                			<goal>
-                                				unpack-dependencies
-                                			</goal>
-                                		</goals>
-                                	</pluginExecutionFilter>
-                                	<action>
-                                		<ignore></ignore>
-                                	</action>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.apache.maven.plugins
+                                        </groupId>
+                                        <artifactId>
+                                            maven-dependency-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [2.4,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>
+                                                unpack-dependencies
+                                            </goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
                                 </pluginExecution>
                             </pluginExecutions>
                         </lifecycleMappingMetadata>

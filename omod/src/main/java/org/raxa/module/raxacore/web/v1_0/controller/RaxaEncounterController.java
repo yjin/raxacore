@@ -18,6 +18,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,15 +28,21 @@ import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.openmrs.Concept;
 import org.openmrs.ConceptNumeric;
 import org.openmrs.DrugOrder;
 import org.openmrs.Encounter;
 import org.openmrs.Obs;
 import org.openmrs.Order;
+import org.openmrs.Patient;
 import org.openmrs.Provider;
 import org.openmrs.api.EncounterService;
 import org.openmrs.api.context.Context;
+import org.openmrs.logic.result.Result;
+import org.openmrs.module.dss.hibernateBeans.Rule;
+import org.openmrs.module.dss.service.DssService;
 import org.openmrs.module.webservices.rest.SimpleObject;
 import org.openmrs.module.webservices.rest.web.ConversionUtil;
 import org.openmrs.module.webservices.rest.web.RestUtil;
@@ -43,7 +50,8 @@ import org.openmrs.module.webservices.rest.web.annotation.WSDoc;
 import org.openmrs.module.webservices.rest.web.response.ResponseException;
 import org.openmrs.module.webservices.rest.web.v1_0.controller.BaseRestController;
 import org.openmrs.util.OpenmrsConstants;
-import org.openmrs.util.OpenmrsUtil;
+import org.raxa.module.raxacore.RaxaAlert;
+import org.raxa.module.raxacore.RaxaAlertService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -59,7 +67,13 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @RequestMapping(value = "/rest/v1/raxacore/encounter")
 public class RaxaEncounterController extends BaseRestController {
 	
+	Log log = LogFactory.getLog(getClass());
+	
 	EncounterService service;
+	
+	DssService dssService;
+	
+	RaxaAlertService raxaAlertService;
 	
 	SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 	
@@ -85,8 +99,7 @@ public class RaxaEncounterController extends BaseRestController {
 	}
 	
 	/**
-	 * Create new encounter by POST'ing at least name and description property in the
-	 * request body.
+	 * Create new encounter by POST'ing at least name and description property in the request body.
 	 *
 	 * @param post the body of the POST request
 	 * @param request
@@ -102,13 +115,15 @@ public class RaxaEncounterController extends BaseRestController {
 		initEncounterController();
 		validatePost(post);
 		Encounter encounter = createEncounterFromPost(post);
+		evaluateRules(encounter);
 		return RestUtil.created(response, getEncounterAsSimpleObject(encounter));
 	}
 	
 	/**
 	 * Creates an encounter based on fields in the post object
+	 *
 	 * @param post
-	 * @return 
+	 * @return
 	 */
 	private Encounter createEncounterFromPost(SimpleObject post) throws ResponseException {
 		Encounter encounter = new Encounter();
@@ -133,8 +148,7 @@ public class RaxaEncounterController extends BaseRestController {
 		}
 		if (post.get("provider") != null) {
 			encounter.setProvider(Context.getPersonService().getPersonByUuid(post.get("provider").toString()));
-		}
-		//if no provider is given in the post, set as the current user
+		} //if no provider is given in the post, set as the current user
 		else {
 			encounter.setProvider(Context.getAuthenticatedUser().getPerson());
 		}
@@ -150,8 +164,9 @@ public class RaxaEncounterController extends BaseRestController {
 	
 	/**
 	 * Creates and saves the obs from the given post
+	 *
 	 * @param post
-	 * @param encounter 
+	 * @param encounter
 	 */
 	private void createObsFromPost(SimpleObject post, Encounter encounter) throws ResponseException {
 		List<LinkedHashMap> obsObjects = (List<LinkedHashMap>) post.get("obs");
@@ -190,9 +205,9 @@ public class RaxaEncounterController extends BaseRestController {
 				String units = concept.getUnits();
 				if (StringUtils.isNotBlank(units)) {
 					String originalValue = value.toString().trim();
-					if (originalValue.endsWith(units))
+					if (originalValue.endsWith(units)) {
 						value = originalValue.substring(0, originalValue.indexOf(units)).trim();
-					else {
+					} else {
 						//check that that this value has no invalid units
 						try {
 							Double.parseDouble(originalValue);
@@ -221,8 +236,9 @@ public class RaxaEncounterController extends BaseRestController {
 	
 	/**
 	 * Creates and saves the orders from the given post
+	 *
 	 * @param post
-	 * @param encounter 
+	 * @param encounter
 	 */
 	private void createOrdersFromPost(SimpleObject post, Encounter encounter) throws ResponseException {
 		List<LinkedHashMap> orderObjects = (List<LinkedHashMap>) post.get("orders");
@@ -275,6 +291,80 @@ public class RaxaEncounterController extends BaseRestController {
 				order.setOrderer(Context.getAuthenticatedUser());
 			}
 			Context.getOrderService().saveOrder(order);
+		}
+	}
+	
+	/**
+	 * Evaluate rules for a given patient
+	 *
+	 * @param patient
+	 */
+	private void evaluateRules(Encounter encounter) {
+		
+		if (encounter == null) {
+			throw new IllegalArgumentException("Encounter cannot be null");
+		}
+		
+		Patient patient = encounter.getPatient();
+		
+		if (patient == null) {
+			throw new IllegalArgumentException("Patient cannot be null");
+		}
+		
+		if (dssService == null) {
+			log.debug("Fetching DSS service...");
+			try {
+				dssService = Context.getService(DssService.class);
+			}
+			catch (Exception e) {
+				log.error("Could not get the DSS service. I will not proceed.");
+				return;
+			}
+		}
+		
+		log.debug("Going to get and execute rules...");
+		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
+		List<Result> results = dssService.runRules(patient, rules);
+		
+		// finally, create alerts if needed
+		for (Result currResult : results) {
+			createAlertsForResult(currResult);
+		}
+	}
+	
+	private void createAlertsForResult(Result result) {
+		if (result == null) {
+			return;
+		}
+		// create alert
+		RaxaAlert alert = new RaxaAlert();
+		// TODO: what to put in here?
+		// result.toString() returns the string in the "Actions"
+		// section of the MLM file if it had concluded true
+		alert.setDescription(result.toString());
+		alert.setName(result.toString());
+		
+		// TODO: which type?
+		alert.setAlertType("DSS");
+		
+		// TODO: which provider?
+		Provider provider = Context.getProviderService().getProviderByUuid("73bbb069-9781-4afc-a9d1-54b6b2270e05");
+		
+		if (provider == null) {
+			throw new IllegalArgumentException("Provider cannot be null");
+		}
+		alert.setProviderSent(provider);
+		alert.setProviderSentId(provider.getId());
+		// save it
+		try {
+			if (raxaAlertService == null) {
+				raxaAlertService = Context.getService(RaxaAlertService.class);
+			}
+			log.info("Going to save alert...");
+			raxaAlertService.saveRaxaAlert(alert);
+		}
+		catch (Exception e) {
+			log.error("Could not save RaxaAlert. Here is what I know: " + e.toString());
 		}
 	}
 	
@@ -375,9 +465,10 @@ public class RaxaEncounterController extends BaseRestController {
 	
 	/**
 	 * Helper function to add an order to simpleobject for returning over REST
+	 *
 	 * @param obj
 	 * @param order
-	 * @return 
+	 * @return
 	 */
 	private SimpleObject createObjectFromOrder(Order order) {
 		SimpleObject newOrderObject = new SimpleObject();
@@ -411,9 +502,10 @@ public class RaxaEncounterController extends BaseRestController {
 	
 	/**
 	 * Helper function to add an obs to simpleobject for returning over REST
+	 *
 	 * @param obj
 	 * @param order
-	 * @return 
+	 * @return
 	 */
 	private SimpleObject createObjectFromObs(Obs obs) {
 		SimpleObject newObsObject = new SimpleObject();
@@ -428,5 +520,4 @@ public class RaxaEncounterController extends BaseRestController {
 		}
 		return newObsObject;
 	}
-	
 }
