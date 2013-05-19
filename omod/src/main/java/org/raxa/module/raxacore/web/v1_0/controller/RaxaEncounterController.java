@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -325,9 +326,13 @@ public class RaxaEncounterController extends BaseRestController {
 		log.debug("Going to get and execute rules...");
 		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
 		List<Result> results = dssService.runRules(patient, rules);
+		HashSet<Result> resultSet = new HashSet<Result>();
+		for (Result currResult : results) {
+			resultSet.add(currResult);
+		}
 		
 		// finally, create alerts if needed
-		for (Result currResult : results) {
+		for (Result currResult : resultSet) {
 			createAlertsForResult(currResult);
 		}
 	}
@@ -348,7 +353,12 @@ public class RaxaEncounterController extends BaseRestController {
 		alert.setAlertType("DSS");
 		
 		// TODO: which provider?
-		Provider provider = Context.getProviderService().getProviderByUuid("73bbb069-9781-4afc-a9d1-54b6b2270e05");
+		// Provider provider = Context.getProviderService().getProviderByUuid("73bbb069-9781-4afc-a9d1-54b6b2270e05");
+		Provider provider = null;
+		List<Provider> providers = Context.getProviderService().getAllProviders();
+		if (providers.size() > 0) {
+			provider = providers.get(0);
+		}
 		
 		if (provider == null) {
 			throw new IllegalArgumentException("Provider cannot be null");
