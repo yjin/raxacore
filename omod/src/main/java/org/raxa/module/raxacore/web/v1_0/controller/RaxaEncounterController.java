@@ -333,11 +333,11 @@ public class RaxaEncounterController extends BaseRestController {
 		
 		// finally, create alerts if needed
 		for (Result currResult : resultSet) {
-			createAlertsForResult(currResult);
+			createAlertsForResult(currResult, patient);
 		}
 	}
 	
-	private void createAlertsForResult(Result result) {
+	private void createAlertsForResult(Result result, Patient patient) {
 		if (result == null) {
 			return;
 		}
@@ -348,6 +348,8 @@ public class RaxaEncounterController extends BaseRestController {
 		// section of the MLM file if it had concluded true
 		alert.setDescription(result.toString());
 		alert.setName(result.toString());
+		alert.setPatient(patient);
+		alert.setTime(new Date());
 		
 		// TODO: which type?
 		alert.setAlertType("DSS");
