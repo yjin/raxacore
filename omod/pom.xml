@@ -74,6 +74,20 @@
             <artifactId>guava</artifactId>
             <version>10.0.1</version>
         </dependency>
+       
+        <dependency>
+            <groupId>org.openmrs.module</groupId>
+            <artifactId>dss-api</artifactId>
+            <version>2.27.23-SNAPSHOT</version>
+            <type>jar</type>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openmrs.module</groupId>
+            <artifactId>webservices.rest-omod-common</artifactId>
+            <version>2.1</version>
+            <type>jar</type>
+        </dependency>
     </dependencies>
 
     <build>
