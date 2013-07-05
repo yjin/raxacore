@@ -41,9 +41,11 @@ import org.openmrs.Patient;
 import org.openmrs.Provider;
 import org.openmrs.api.EncounterService;
 import org.openmrs.api.context.Context;
+import org.openmrs.logic.LogicService;
 import org.openmrs.logic.result.Result;
 import org.openmrs.module.dss.hibernateBeans.Rule;
 import org.openmrs.module.dss.service.DssService;
+import org.openmrs.module.dss.util.Util;
 import org.openmrs.module.webservices.rest.SimpleObject;
 import org.openmrs.module.webservices.rest.web.ConversionUtil;
 import org.openmrs.module.webservices.rest.web.RestUtil;
@@ -73,6 +75,8 @@ public class RaxaEncounterController extends BaseRestController {
 	EncounterService service;
 	
 	DssService dssService;
+	
+	LogicService logicService;
 	
 	RaxaAlertService raxaAlertService;
 	
@@ -323,8 +327,22 @@ public class RaxaEncounterController extends BaseRestController {
 			}
 		}
 		
+		if (logicService == null) {
+			log.debug("Fetching DSS service...");
+			try {
+				logicService = Context.getService(LogicService.class);
+			}
+			catch (Exception e) {
+				log.error("Could not get the DSS service. I will not proceed.");
+				return;
+			}
+		}
+		
 		log.debug("Going to get and execute rules...");
-		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
+		//		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
+		Rule rule = Util.convertRule(logicService.getRule("dobImmune"), "dobImmune");
+		List<Rule> rules = new ArrayList<Rule>();
+		rules.add(rule);
 		List<Result> results = dssService.runRules(patient, rules);
 		HashSet<Result> resultSet = new HashSet<Result>();
 		for (Result currResult : results) {
