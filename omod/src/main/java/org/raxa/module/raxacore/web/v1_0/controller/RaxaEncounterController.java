@@ -16,13 +16,11 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -33,7 +31,6 @@ import org.openmrs.DrugOrder;
 import org.openmrs.Encounter;
 import org.openmrs.Obs;
 import org.openmrs.Order;
-import org.openmrs.Provider;
 import org.openmrs.api.EncounterService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.webservices.rest.SimpleObject;
@@ -42,7 +39,6 @@ import org.openmrs.module.webservices.rest.web.RestUtil;
 import org.openmrs.module.webservices.rest.web.annotation.WSDoc;
 import org.openmrs.module.webservices.rest.web.response.ResponseException;
 import org.openmrs.module.webservices.rest.web.v1_0.controller.BaseRestController;
-import org.openmrs.util.OpenmrsConstants;
 import org.openmrs.util.OpenmrsUtil;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -67,9 +63,9 @@ public class RaxaEncounterController extends BaseRestController {
 	
 	private static final String[] REQUIRED_FIELDS = { "encounterDatetime", "patient", "encounterType" };
 	
-	private static final String[] DATE_FORMATS = { "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
-	        "yyyy-MM-dd'T'HH:mm:ss.SSS", "EEE MMM d yyyy HH:mm:ss zZzzzz", "yyyy-MM-dd'T'HH:mm:ssZ",
-	        "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd" };
+	private static final String[] DATE_FORMATS = { "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ss.SSS",
+	        "EEE MMM d yyyy HH:mm:ss zZzzzz", "yyyy-MM-dd'T'HH:mm:ssZ", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss",
+	        "yyyy-MM-dd" };
 	
 	public void initEncounterController() {
 		service = Context.getEncounterService();
@@ -115,15 +111,9 @@ public class RaxaEncounterController extends BaseRestController {
 		encounter.setPatient(Context.getPatientService().getPatientByUuid(post.get("patient").toString()));
 		for (int i = 0; i < DATE_FORMATS.length; i++) {
 			try {
+				System.out.println(i);
 				Date date = new SimpleDateFormat(DATE_FORMATS[i]).parse(post.get("encounterDatetime").toString());
-				//Openmrs doesn't allow future encounters
-				if (date.after(new Date())) {
-					encounter.setEncounterDatetime(new Date());
-					break;
-				} else {
-					encounter.setEncounterDatetime(date);
-					break;
-				}
+				encounter.setEncounterDatetime(date);
 			}
 			catch (Exception ex) {}
 		}
@@ -133,10 +123,6 @@ public class RaxaEncounterController extends BaseRestController {
 		}
 		if (post.get("provider") != null) {
 			encounter.setProvider(Context.getPersonService().getPersonByUuid(post.get("provider").toString()));
-		}
-		//if no provider is given in the post, set as the current user
-		else {
-			encounter.setProvider(Context.getAuthenticatedUser().getPerson());
 		}
 		Encounter newEncounter = service.saveEncounter(encounter);
 		if (post.get("obs") != null) {
@@ -155,7 +141,6 @@ public class RaxaEncounterController extends BaseRestController {
 	 */
 	private void createObsFromPost(SimpleObject post, Encounter encounter) throws ResponseException {
 		List<LinkedHashMap> obsObjects = (List<LinkedHashMap>) post.get("obs");
-		List<Obs> encounterObs = new ArrayList();
 		for (int i = 0; i < obsObjects.size(); i++) {
 			Obs obs = new Obs();
 			obs.setPerson(encounter.getPatient());
@@ -165,57 +150,54 @@ public class RaxaEncounterController extends BaseRestController {
 				obs.setLocation(encounter.getLocation());
 			}
 			obs.setEncounter(encounter);
-			if (obsObjects.get(i).get("value") != null) {
-				setObsValue(obs, obsObjects.get(i).get("value").toString());
-			}
+			obs = setObsValue(obs, obsObjects.get(i).get("value"));
 			if (obsObjects.get(i).get("comment") != null) {
 				obs.setComment(obsObjects.get(i).get("comment").toString());
 			}
-			encounter.addObs(obs);
-			//Context.getObsService().saveObs(obs, "saving new obs");
+			Context.getObsService().saveObs(obs, "saving new obs");
 		}
 	}
 	
 	private Obs setObsValue(Obs obs, Object value) throws ResponseException {
-		if (obs.getConcept().getDatatype().isCoded()) {
-			// setValueAsString is not implemented for coded obs (in core)
-			Concept valueCoded = (Concept) ConversionUtil.convert(value, Concept.class);
-			obs.setValueCoded(valueCoded);
-		} else if (obs.getConcept().getDatatype().isComplex()) {
-			obs.setValueComplex(value.toString());
-		} else {
-			if (obs.getConcept().isNumeric()) {
-				//get the actual persistent object rather than the hibernate proxy
-				ConceptNumeric concept = Context.getConceptService().getConceptNumeric(obs.getConcept().getId());
-				String units = concept.getUnits();
-				if (StringUtils.isNotBlank(units)) {
-					String originalValue = value.toString().trim();
-					if (originalValue.endsWith(units))
-						value = originalValue.substring(0, originalValue.indexOf(units)).trim();
-					else {
-						//check that that this value has no invalid units
-						try {
-							Double.parseDouble(originalValue);
-						}
-						catch (NumberFormatException e) {
-							throw new ResponseException(
-							                            originalValue + " has invalid units", e) {};
+		if (value != null) {
+			if (obs.getConcept().getDatatype().isCoded()) {
+				// setValueAsString is not implemented for coded obs (in core)
+				Concept valueCoded = (Concept) ConversionUtil.convert(value, Concept.class);
+				obs.setValueCoded(valueCoded);
+			} else if (obs.getConcept().getDatatype().isComplex()) {
+				obs.setValueComplex(value.toString());
+			} else {
+				if (obs.getConcept().isNumeric()) {
+					//get the actual persistent object rather than the hibernate proxy
+					ConceptNumeric concept = Context.getConceptService().getConceptNumeric(obs.getConcept().getId());
+					String units = concept.getUnits();
+					if (StringUtils.isNotBlank(units)) {
+						String originalValue = value.toString().trim();
+						if (originalValue.endsWith(units))
+							value = originalValue.substring(0, originalValue.indexOf(units)).trim();
+						else {
+							//check that that this value has no invalid units
+							try {
+								Double.parseDouble(originalValue);
+							}
+							catch (NumberFormatException e) {
+								throw new ResponseException(
+								                            originalValue + " has invalid units", e) {};
+							}
 						}
 					}
 				}
-			}
-			try {
-				if (obs.getConcept().getDatatype().getHl7Abbreviation().equals("ZZ")) {
-					obs.setValueText(value.toString());
-				} else {
+				try {
 					obs.setValueAsString(value.toString());
 				}
+				catch (Exception e) {
+					throw new ResponseException(
+					                            "Unable to convert obs value") {};
+				}
 			}
-			catch (Exception e) {
-				throw new ResponseException(
-				                            "Unable to convert obs value " + e.getMessage()) {};
-			}
-		}
+		} else
+			throw new ResponseException(
+			                            "The value for an observation cannot be null") {};
 		return obs;
 	}
 	
@@ -227,28 +209,14 @@ public class RaxaEncounterController extends BaseRestController {
 	private void createOrdersFromPost(SimpleObject post, Encounter encounter) throws ResponseException {
 		List<LinkedHashMap> orderObjects = (List<LinkedHashMap>) post.get("orders");
 		for (int i = 0; i < orderObjects.size(); i++) {
-			//only setting drug orders now
-			DrugOrder order = new DrugOrder();
+			Order order = new Order();
 			order.setPatient(encounter.getPatient());
 			order.setConcept(Context.getConceptService().getConceptByUuid(orderObjects.get(i).get("concept").toString()));
-			order.setOrderType(Context.getOrderService().getOrderType(OpenmrsConstants.ORDERTYPE_DRUG));
+			order
+			        .setOrderType(Context.getOrderService().getOrderTypeByUuid(
+			            orderObjects.get(i).get("orderType").toString()));
 			if (orderObjects.get(i).get("instructions") != null) {
 				order.setInstructions(orderObjects.get(i).get("instructions").toString());
-			}
-			if (orderObjects.get(i).get("drug") != null) {
-				order.setDrug(Context.getConceptService().getDrugByUuid(orderObjects.get(i).get("drug").toString()));
-			}
-			if (orderObjects.get(i).get("instructions") != null) {
-				order.setInstructions(orderObjects.get(i).get("instructions").toString());
-			}
-			if (orderObjects.get(i).get("frequency") != null) {
-				order.setFrequency(orderObjects.get(i).get("frequency").toString());
-			}
-			if (orderObjects.get(i).get("quantity") != null) {
-				order.setQuantity((Integer) orderObjects.get(i).get("quantity"));
-			}
-			if (orderObjects.get(i).get("dose") != null) {
-				order.setDose((Double) orderObjects.get(i).get("dose"));
 			}
 			if (orderObjects.get(i).get("startDate") != null) {
 				for (int j = 0; j < DATE_FORMATS.length; j++) {
@@ -257,7 +225,10 @@ public class RaxaEncounterController extends BaseRestController {
 						        .toString());
 						order.setStartDate(date);
 					}
-					catch (Exception ex) {}
+					catch (Exception ex) {
+						throw new ResponseException(
+						                            "Unable to parse date for Obs") {};
+					}
 				}
 			}
 			if (orderObjects.get(i).get("autoExpireDate") != null) {
@@ -267,7 +238,10 @@ public class RaxaEncounterController extends BaseRestController {
 						        .toString());
 						order.setAutoExpireDate(date);
 					}
-					catch (Exception ex) {}
+					catch (Exception ex) {
+						throw new ResponseException(
+						                            "Unable to parse date for Obs") {};
+					}
 				}
 			}
 			order.setEncounter(encounter);
@@ -296,31 +270,6 @@ public class RaxaEncounterController extends BaseRestController {
 		Encounter encounter = service.getEncounterByUuid(uuid);
 		SimpleObject obj = getEncounterAsSimpleObject(encounter);
 		return gson.toJson(obj);
-	}
-	
-	/**
-	 * Get the encounters by provider
-	 *
-	 * @param uuid
-	 * @param rep
-	 * @param request
-	 * @return
-	 * @throws ResponseException
-	 */
-	@RequestMapping(method = RequestMethod.GET, params = "provider")
-	@WSDoc("Gets Full representation of Encounter for the uuid path")
-	@ResponseBody()
-	public String getEncountersByProvider(@RequestParam Map<String, String> params, HttpServletRequest request)
-	        throws ResponseException {
-		initEncounterController();
-		List<Provider> providers = new ArrayList();
-		providers.add(Context.getProviderService().getProviderByUuid(params.get("provider")));
-		List<Encounter> encounters = service.getEncounters(null, null, null, null, null, null, providers, null, null, true);
-		ArrayList results = new ArrayList();
-		for (Encounter encounter : encounters) {
-			results.add(getEncounterAsSimpleObject(encounter));
-		}
-		return gson.toJson(new SimpleObject().add("results", results));
 	}
 	
 	/**
