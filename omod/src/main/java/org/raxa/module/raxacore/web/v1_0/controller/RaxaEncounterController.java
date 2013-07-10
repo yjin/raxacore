@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang.StringUtils;
@@ -151,12 +153,12 @@ public class RaxaEncounterController extends BaseRestController {
 		if (post.get("location") != null) {
 			encounter.setLocation(Context.getLocationService().getLocationByUuid(post.get("location").toString()));
 		}
-		if (post.get("provider") != null) {
-			encounter.setProvider(Context.getPersonService().getPersonByUuid(post.get("provider").toString()));
-		} //if no provider is given in the post, set as the current user
-		else {
-			encounter.setProvider(Context.getAuthenticatedUser().getPerson());
-		}
+		/*		if (post.get("provider") != null) {
+					encounter.setProvider(Context.getPersonService().getPersonByUuid(post.get("provider").toString()));
+				} //if no provider is given in the post, set as the current user
+				else {
+					encounter.setProvider(Context.getAuthenticatedUser().getPerson());
+				}*/
 		Encounter newEncounter = service.saveEncounter(encounter);
 		if (post.get("obs") != null) {
 			createObsFromPost(post, newEncounter);
@@ -340,9 +342,13 @@ public class RaxaEncounterController extends BaseRestController {
 		
 		log.debug("Going to get and execute rules...");
 		//		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
-		Rule rule = Util.convertRule(logicService.getRule("dobImmune"), "dobImmune");
+		Rule example1 = Util.convertRule(logicService.getRule("drugAllergy"), "drugAllergy");
+		Rule example2 = Util.convertRule(logicService.getRule("drugRecommendation"), "drugRecommendation");
+		Rule example3 = Util.convertRule(logicService.getRule("drugInteraction"), "drugInteraction");
 		List<Rule> rules = new ArrayList<Rule>();
-		rules.add(rule);
+		rules.add(example1);
+		rules.add(example2);
+		rules.add(example3);
 		List<Result> results = dssService.runRules(patient, rules);
 		HashSet<Result> resultSet = new HashSet<Result>();
 		for (Result currResult : results) {
@@ -356,7 +362,7 @@ public class RaxaEncounterController extends BaseRestController {
 	}
 	
 	private void createAlertsForResult(Result result, Patient patient) {
-		if (result == null) {
+		if (result.isEmpty()) {
 			return;
 		}
 		// create alert
