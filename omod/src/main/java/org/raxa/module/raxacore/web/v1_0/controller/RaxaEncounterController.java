@@ -47,7 +47,6 @@ import org.openmrs.logic.LogicService;
 import org.openmrs.logic.result.Result;
 import org.openmrs.module.dss.hibernateBeans.Rule;
 import org.openmrs.module.dss.service.DssService;
-import org.openmrs.module.dss.util.Util;
 import org.openmrs.module.webservices.rest.SimpleObject;
 import org.openmrs.module.webservices.rest.web.ConversionUtil;
 import org.openmrs.module.webservices.rest.web.RestUtil;
@@ -341,18 +340,15 @@ public class RaxaEncounterController extends BaseRestController {
 		}
 		
 		log.debug("Going to get and execute rules...");
-		//		List<Rule> rules = dssService.getPrioritizedRulesByConceptsInEncounter(encounter);
-		Rule example1 = Util.convertRule(logicService.getRule("drugAllergy"), "drugAllergy");
-		Rule example2 = Util.convertRule(logicService.getRule("drugRecommendation"), "drugRecommendation");
-		Rule example3 = Util.convertRule(logicService.getRule("drugInteraction"), "drugInteraction");
-		List<Rule> rules = new ArrayList<Rule>();
-		rules.add(example1);
-		rules.add(example2);
-		rules.add(example3);
+		
+		List<Rule> rules = dssService.getGeneralizedJavaRules();
 		List<Result> results = dssService.runRules(patient, rules);
+		
 		HashSet<Result> resultSet = new HashSet<Result>();
-		for (Result currResult : results) {
-			resultSet.add(currResult);
+		
+		// remove duplicates
+		for (Result result : results) {
+			resultSet.add(result);
 		}
 		
 		// finally, create alerts if needed
